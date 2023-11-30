@@ -27,13 +27,16 @@ import warnings
 warnings.filterwarnings("ignore")
 
 args = options()
+sys_split = os.path.sep
 
 def main():    
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print('[Info] Using {} for inference.'.format(device))
     os.makedirs(os.path.join('temp', args.tmp_dir), exist_ok=True)
 
-    base_name = args.face.split('/')[-1]
+
+    print("args.face:", args.face)
+    base_name = args.face.split(sys_split)[-1]
     if os.path.isfile(args.face) and args.face.split('.')[1] in ['jpg', 'png', 'jpeg']:
         args.static = True
     if not os.path.isfile(args.face):
@@ -82,6 +85,21 @@ def main():
     else:
         print('[Step 1] Using saved landmarks.')
         lm = np.loadtxt('temp/'+base_name+'_landmarks.txt').astype(np.float32)
+        # # 假设原数组为 lm
+        # original_length = len(lm)
+        # target_shape = (len(full_frames), -1, 2)
+        #
+        # # 计算目标形状中第二维的大小
+        # target_shape_second_dim = int(original_length / (target_shape[0] * target_shape[2]))
+        #
+        # # 计算合适的长度，使得目标形状成立
+        # suitable_length = target_shape[0] * target_shape_second_dim * target_shape[2]
+        #
+        # # 截取原数组的前面一部分，使得长度能够满足目标形状
+        # lm_trimmed = lm[:suitable_length]
+        #
+        # # 调整形状
+        # lm = lm_trimmed.reshape(target_shape)
         lm = lm.reshape([len(full_frames), -1, 2])
        
     if not os.path.isfile('temp/'+base_name+'_coeffs.npy') or args.exp_img is not None or args.re_preprocess:
@@ -285,15 +303,31 @@ def main():
     
     if not os.path.isdir(os.path.dirname(args.outfile)):
         os.makedirs(os.path.dirname(args.outfile), exist_ok=True)
-    command = 'ffmpeg -loglevel error -y -i {} -i {} -strict -2 -q:v 1 {} && rm -rf temp/*'.format(args.audio, 'temp/{}/result.mp4'.format(args.tmp_dir), args.outfile)
-    subprocess.call(command, shell=platform.system() != 'Windows')
+    import subprocess
+    import platform
+    # 使用 os.path.join 来构建文件路径，而不是直接拼接字符串
+    result_path = os.path.join('temp', args.tmp_dir, 'result.mp4')
+    # 根据操作系统选择不同的删除命令
+    if platform.system() == 'Windows':
+        delete_command = 'rmdir /s /q temp'
+    else:
+        delete_command = 'rm -rf temp'
+    # 构建命令，使用适用于Windows的删除命令
+    command = 'ffmpeg -loglevel error -y -i "{}" -i "{}" -strict -2 -q:v 1 "{}" && {}'.format(args.audio, result_path,
+                                                                                              args.outfile,
+                                                                                              delete_command)
+    # 使用 shell=True 来允许执行整个命令字符串
+    subprocess.call(command, shell=True)
+
+    # command = 'ffmpeg -loglevel error -y -i {} -i {} -strict -2 -q:v 1 {} && rm -rf temp/*'.format(args.audio, 'temp/{}/result.mp4'.format(args.tmp_dir), args.outfile)
+    # subprocess.call(command, shell=platform.system() != 'Windows')
     print('outfile:', args.outfile)
 
 
 # frames:256x256, full_frames: original size
 def datagen(frames, mels, full_frames, frames_pil, cox):
     img_batch, mel_batch, frame_batch, coords_batch, ref_batch, full_frame_batch = [], [], [], [], [], []
-    base_name = args.face.split('/')[-1]
+    base_name = args.face.split(sys_split)[-1]
     refs = []
     image_size = 256 
 
